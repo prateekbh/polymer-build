@@ -52,6 +52,10 @@ export const resolveBareSpecifiers =
           let relativeSpecifierUrl =
               relative(dirname(filePath), resolvedSpecifier);
 
+          if (process.platform === 'win32') {
+            relativeSpecifierUrl = relativeSpecifierUrl.replace(/\\/g, '/');
+          }
+
           if (!isPathSpecifier(relativeSpecifierUrl)) {
             relativeSpecifierUrl = './' + relativeSpecifierUrl;
           }

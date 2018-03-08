@@ -79,10 +79,12 @@ suite('optimize-streams', () => {
       const contents = stripIndent(`
       import { dep1 } from 'dep1';
       import { dep2 } from 'dep2';
+      import { dep2A } from 'dep2/a';
       `);
       const expected = stripIndent(`
       import { dep1 } from './node_modules/dep1/index.js';
       import { dep2 } from './node_modules/dep2/dep2.js';
+      import { dep2A } from './node_modules/dep2/a.js';
       `);
 
       const result = await testStream(pipeStreams([
@@ -100,6 +102,7 @@ suite('optimize-streams', () => {
           <script type="module">
             import { dep1 } from 'dep1';
             import { dep2 } from 'dep2';
+            import { dep2A } from 'dep2/a';
           </script>
         </head>
         <body></body>
@@ -110,7 +113,8 @@ suite('optimize-streams', () => {
       <html><head>
           <script type="module">
       import { dep1 } from './node_modules/dep1/index.js';
-      import { dep2 } from './node_modules/dep2/dep2.js';</script>
+      import { dep2 } from './node_modules/dep2/dep2.js';
+      import { dep2A } from './node_modules/dep2/a.js';</script>
         </head>
         <body>
 

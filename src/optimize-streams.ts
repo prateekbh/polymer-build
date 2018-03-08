@@ -19,7 +19,10 @@ import {minify as htmlMinify, Options as HTMLMinifierOptions} from 'html-minifie
 import * as logging from 'plylog';
 import {Transform} from 'stream';
 import * as vinyl from 'vinyl';
+
 import matcher = require('matcher');
+
+import {resolveBareSpecifiers} from './babel-plugin-bare-specifiers';
 
 const babelPresetES2015 = require('babel-preset-es2015');
 const minifyPreset = require('babel-preset-minify');
@@ -75,10 +78,12 @@ export interface OptimizeOptions {
  * through unaffected.
  */
 export class GenericOptimizeTransform extends Transform {
-  optimizer: (content: string) => string;
+  optimizer: (content: string, file: File) => string;
   optimizerName: string;
 
-  constructor(optimizerName: string, optimizer: (content: string) => string) {
+  constructor(
+      optimizerName: string,
+      optimizer: (content: string, file: File) => string) {
     super({objectMode: true});
     this.optimizer = optimizer;
     this.optimizerName = optimizerName;
@@ -98,7 +103,7 @@ export class GenericOptimizeTransform extends Transform {
     if (file.contents) {
       try {
         let contents = file.contents.toString();
-        contents = this.optimizer(contents);
+        contents = this.optimizer(contents, file);
         file.contents = new Buffer(contents);
       } catch (error) {
         logger.warn(
@@ -115,13 +120,14 @@ export class GenericOptimizeTransform extends Transform {
  */
 export class JSCompileTransform extends GenericOptimizeTransform {
   constructor() {
-    const transformer = (content: string) =>
+    const transformer = (content: string, file: File) =>
         babelTransform(content, {
           presets: [babelPresetES2015NoModules],
           plugins: [
             externalHelpersPlugin,
             babelObjectRestSpreadPlugin,
             babelPluginSyntaxDynamicImport,
+            resolveBareSpecifiers(file.path, false),
           ]
         }).code!;
     super('babel-compile', transformer);
@@ -199,6 +205,8 @@ export function getOptimizeStreams(options?: OptimizeOptions):
 
   // compile ES6 JavaScript using babel
   if (options.js && options.js.compile) {
+    // TODO(aomarks) We should probably always do module name-to-path remapping,
+    // or at least put it behind a different option, right?
     streams.push(gulpif(
         matchesExtAndNotExcluded('.js', options.js.compile),
         new JSCompileTransform()));

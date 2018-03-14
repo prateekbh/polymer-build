@@ -85,6 +85,7 @@
     "typescript": "^2.3.2",
     "uglify-js": "^2.8.26",
     "vinyl-fs-fake": "^1.1.0",
-    "watchy": "^0.6.7"
+    "watchy": "^0.6.7",
+    "workbox-build": "^3.0.0"
   }
 }

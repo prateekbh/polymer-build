@@ -16,14 +16,14 @@
 
 // TODO Migrate to async tests.
 
-import {assert} from 'chai';
+import { assert } from 'chai';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vfs from 'vinyl-fs';
 const temp = require('temp').track();
 const mergeStream = require('merge-stream');
 
-import {PolymerProject} from '../polymer-project';
+import { PolymerProject } from '../polymer-project';
 import * as serviceWorker from '../service-worker';
 
 suite('service-worker', () => {
@@ -48,19 +48,19 @@ suite('service-worker', () => {
       }
       testBuildRoot = dir;
       vfs.src(path.join('test-fixtures/test-project/**'))
-          .pipe(vfs.dest(dir))
-          .on('end', () => {
-            mergeStream(defaultProject.sources(), defaultProject.dependencies())
-                .pipe(vfs.dest(testBuildRoot))
-                .on('end', () => done())
-                .on('error', done);
-          });
+        .pipe(vfs.dest(dir))
+        .on('end', () => {
+          mergeStream(defaultProject.sources(), defaultProject.dependencies())
+            .pipe(vfs.dest(testBuildRoot))
+            .on('end', () => done())
+            .on('error', done);
+        });
 
     });
   });
 
-  teardown((done) => {
-    temp.cleanup(done);
+  teardown(() => {
+    //temp.cleanup(done);
   });
 
   suite('hasNoFileExtension regexp', () => {
@@ -86,8 +86,7 @@ suite('service-worker', () => {
       });
       assert.equal(config.navigateFallback, 'index.html');
       assert.deepEqual(
-          config.navigateFallbackWhitelist, [serviceWorker.hasNoFileExtension]);
-      assert.equal(config.directoryIndex, '');
+        config.navigateFallbackWhitelist, [serviceWorker.hasNoFileExtension]);
     });
   });
 
@@ -95,115 +94,78 @@ suite('service-worker', () => {
 
     test('should throw when options are not provided', () => {
       return (<any>serviceWorker.generateServiceWorker)().then(
-          () => {
-            assert.fail(
-                'generateServiceWorker() resolved, expected rejection!');
-          },
-          (error: Error) => {
-            assert.include(error.name, 'AssertionError');
-            assert.equal(
-                error.message, '`project` & `buildRoot` options are required');
-          });
+        () => {
+          assert.fail(
+            'generateServiceWorker() resolved, expected rejection!');
+        },
+        (error: Error) => {
+          assert.include(error.name, 'AssertionError');
+          assert.equal(
+            error.message, '`project` & `buildRoot` options are required');
+        });
     });
 
     test('should throw when options.project is not provided', () => {
       return (<any>serviceWorker.generateServiceWorker)(
-                 {buildRoot: testBuildRoot})
-          .then(
-              () => {
-                assert.fail(
-                    'generateServiceWorker() resolved, expected rejection!');
-              },
-              (error: Error) => {
-                assert.include(error.name, 'AssertionError');
-                assert.equal(error.message, '`project` option is required');
-              });
+        { buildRoot: testBuildRoot })
+        .then(
+        () => {
+          assert.fail(
+            'generateServiceWorker() resolved, expected rejection!');
+        },
+        (error: Error) => {
+          assert.include(error.name, 'AssertionError');
+          assert.equal(error.message, '`project` option is required');
+        });
     });
 
     test('should throw when options.buildRoot is not provided', () => {
       return (<any>serviceWorker.generateServiceWorker)(
-                 {project: defaultProject})
-          .then(
-              () => {
-                assert.fail(
-                    'generateServiceWorker() resolved, expected rejection!');
-              },
-              (error: Error) => {
-                assert.include(error.name, 'AssertionError');
-                assert.equal(error.message, '`buildRoot` option is required');
-              });
+        { project: defaultProject })
+        .then(
+        () => {
+          assert.fail(
+            'generateServiceWorker() resolved, expected rejection!');
+        },
+        (error: Error) => {
+          assert.include(error.name, 'AssertionError');
+          assert.equal(error.message, '`buildRoot` option is required');
+        });
     });
 
     test('should not modify the options object provided when called', () => {
-      const swPrecacheConfig = {staticFileGlobs: <string[]>[]};
+      const workboxConfig = { globPatterns: <string[]>[] };
       return serviceWorker
-          .generateServiceWorker({
-            project: defaultProject,
-            buildRoot: testBuildRoot,
-            swPrecacheConfig: swPrecacheConfig,
-          })
-          .then(() => {
-            assert.equal(swPrecacheConfig.staticFileGlobs.length, 0);
-          });
+        .generateServiceWorker({
+          project: defaultProject,
+          buildRoot: testBuildRoot,
+          workboxConfig: workboxConfig,
+        })
+        .then(() => {
+          assert.equal(workboxConfig.globPatterns.length, 0);
+        });
     });
 
     test(
-        'should resolve with a Buffer representing the generated service worker code',
-        () => {
-          return serviceWorker
-              .generateServiceWorker({
-                project: defaultProject,
-                buildRoot: testBuildRoot,
-              })
-              .then((swCode: Buffer) => {
-                assert.ok(swCode instanceof Buffer);
-              });
-        });
-
-    test(
-        'should add unbundled precached assets when options.unbundled is not provided',
-        () => {
-          return serviceWorker
-              .generateServiceWorker({
-                project: defaultProject,
-                buildRoot: testBuildRoot,
-              })
-              .then((swFile: Buffer) => {
-                const fileContents = swFile.toString();
-                assert.include(fileContents, '"index.html"');
-                assert.include(fileContents, '"shell.html"');
-                assert.include(fileContents, '"bower_components/dep.html"');
-                assert.notInclude(fileContents, '"source-dir/my-app.html"');
-              });
-        });
-
-    test(
-        'should add bundled precached assets when options.bundled is provided',
-        () => {
-          return serviceWorker
-              .generateServiceWorker({
-                project: defaultProject,
-                buildRoot: testBuildRoot,
-                bundled: true,
-              })
-              .then((swFile: Buffer) => {
-                const fileContents = swFile.toString();
-                assert.include(fileContents, '"index.html"');
-                assert.include(fileContents, '"shell.html"');
-                assert.notInclude(fileContents, '"bower_components/dep.html"');
-                assert.notInclude(fileContents, '"source-dir/my-app.html"');
-              });
-        });
-
-    test('should add provided staticFileGlobs paths to the final list', () => {
-      return serviceWorker
+      'should resolve with a Buffer representing the generated service worker code',
+      () => {
+        return serviceWorker
           .generateServiceWorker({
             project: defaultProject,
             buildRoot: testBuildRoot,
-            bundled: true,
-            swPrecacheConfig: {
-              staticFileGlobs: ['/bower_components/dep.html'],
-            },
+          })
+          .then((swCode: Buffer) => {
+            assert.ok(swCode instanceof Buffer);
+          });
+      });
+
+    test(
+      'should add unbundled precached assets when options.unbundled is not provided',
+      () => {
+        return serviceWorker
+          .generateServiceWorker({
+            project: defaultProject,
+            buildRoot: testBuildRoot,
           })
           .then((swFile: Buffer) => {
             const fileContents = swFile.toString();
@@ -212,33 +174,70 @@ suite('service-worker', () => {
             assert.include(fileContents, '"bower_components/dep.html"');
             assert.notInclude(fileContents, '"source-dir/my-app.html"');
           });
+      });
+
+    test(
+      'should add bundled precached assets when options.bundled is provided',
+      () => {
+        return serviceWorker
+          .generateServiceWorker({
+            project: defaultProject,
+            buildRoot: testBuildRoot,
+            bundled: true,
+          })
+          .then((swFile: Buffer) => {
+            const fileContents = swFile.toString();
+            assert.include(fileContents, '"index.html"');
+            assert.include(fileContents, '"shell.html"');
+            assert.notInclude(fileContents, '"bower_components/dep.html"');
+            assert.notInclude(fileContents, '"source-dir/my-app.html"');
+          });
+      });
+
+    test('should add provided staticFileGlobs paths to the final list', () => {
+      return serviceWorker
+        .generateServiceWorker({
+          project: defaultProject,
+          buildRoot: testBuildRoot,
+          bundled: true,
+          workboxConfig: {
+            globPatterns: ['/bower_components/dep.html'],
+          },
+        })
+        .then((swFile: Buffer) => {
+          const fileContents = swFile.toString();
+          assert.include(fileContents, '"index.html"');
+          assert.include(fileContents, '"shell.html"');
+          assert.include(fileContents, '"bower_components/dep.html"');
+          assert.notInclude(fileContents, '"source-dir/my-app.html"');
+        });
     });
 
     test('basePath should prefix resources', () => {
       return serviceWorker
-          .generateServiceWorker({
-            project: defaultProject,
-            buildRoot: testBuildRoot,
-            basePath: '/my/base/path'
-          })
-          .then((swFile: Buffer) => {
-            const fileContents = swFile.toString();
-            assert.include(fileContents, '"/my/base/path/index.html"');
-          });
+        .generateServiceWorker({
+          project: defaultProject,
+          buildRoot: testBuildRoot,
+          basePath: '/my/base/path'
+        })
+        .then((swFile: Buffer) => {
+          const fileContents = swFile.toString();
+          assert.include(fileContents, '"/my/base/path/index.html"');
+        });
     });
 
     test('basePath prefixes should not have double delimiters', () => {
       return serviceWorker
-          .generateServiceWorker({
-            project: defaultProject,
-            buildRoot: testBuildRoot,
-            basePath: '/my/base/path/'
-          })
-          .then((swFile: Buffer) => {
-            const fileContents = swFile.toString();
-            assert.include(fileContents, '"/my/base/path/index.html"');
-            assert.notInclude(fileContents, '"/my/base/path//index.html"');
-          });
+        .generateServiceWorker({
+          project: defaultProject,
+          buildRoot: testBuildRoot,
+          basePath: '/my/base/path/'
+        })
+        .then((swFile: Buffer) => {
+          const fileContents = swFile.toString();
+          assert.include(fileContents, '"/my/base/path/index.html"');
+          assert.notInclude(fileContents, '"/my/base/path//index.html"');
+        });
     });
 
 
@@ -248,17 +247,17 @@ suite('service-worker', () => {
 
     test('should write generated service worker to file system', () => {
       return serviceWorker
-          .addServiceWorker({
-            project: defaultProject,
-            buildRoot: testBuildRoot,
-          })
-          .then(() => {
-            const content = fs.readFileSync(
-                path.join(testBuildRoot, 'service-worker.js'), 'utf-8');
-            assert.include(
-                content,
-                '// This generated service worker JavaScript will precache your site\'s resources.');
-          });
+        .addServiceWorker({
+          project: defaultProject,
+          buildRoot: testBuildRoot,
+        })
+        .then(() => {
+          const content = fs.readFileSync(
+            path.join(testBuildRoot, 'service-worker.js'), 'utf-8');
+          assert.include(
+            content,
+            'Welcome to your Workbox-powered service worker!');
+        });
     });
 
   });

@@ -17,7 +17,7 @@
 import { writeFile } from 'fs';
 import * as path from 'path';
 import * as logging from 'plylog';
-import { generateSWString, WorkboxConfig } from 'workbox-build';
+import { generateSWString, getModuleUrl, WorkboxConfig } from 'workbox-build';
 import { DepsIndex } from './analyzer';
 import { PolymerProject } from './polymer-project';
 
@@ -87,7 +87,12 @@ export async function generateServiceWorkerConfig(
   const project = options.project;
   const buildRoot = options.buildRoot;
   const workboxConfig: WorkboxConfig =
-    Object.assign({}, options.workboxConfig);
+    Object.assign({}, {
+      globDirectory: buildRoot,
+      importScripts: [getModuleUrl('workbox-sw')],
+      navigateFallback: path.relative(project.config.root, project.config.entrypoint),
+
+    }, options.workboxConfig);
 
   const depsIndex = await project.analyzer.analyzeDependencies;
   let staticFileGlobs = Array.from(workboxConfig.globPatterns || []);
@@ -103,22 +108,6 @@ export async function generateServiceWorkerConfig(
     return removeLeadingSlash(filePath);
   });
 
-  if (workboxConfig.globDirectory === undefined) {
-    workboxConfig.globDirectory = buildRoot;
-  }
-
-  if (workboxConfig.importScripts === undefined) {
-    // Map all application routes to the entrypoint.
-    workboxConfig.importScripts =
-      ['https://storage.googleapis.com/workbox-cdn/releases/3.0.0/workbox-sw.js'];
-  }
-
-  if (workboxConfig.navigateFallback === undefined) {
-    // Map all application routes to the entrypoint.
-    workboxConfig.navigateFallback =
-      path.relative(project.config.root, project.config.entrypoint);
-  }
-
   if (workboxConfig.navigateFallbackWhitelist === undefined) {
     // Don't fall back to the entrypoint if the URL looks like a static file.
     // We want those to 404 instead, since they are probably missing assets,
@@ -128,14 +117,9 @@ export async function generateServiceWorkerConfig(
   }
 
   if (options.basePath) {
-    workboxConfig.manifestTransforms = [(entries: ManifestEntry[]) => {
-      entries.forEach(entry => {
-        entry.url = path.join(options.basePath, entry.url);
-      });
-      return {
-        manifest: entries
-      }
-    }];
+    workboxConfig.modifyUrlPrefix = Object.assign({}, workboxConfig.modifyUrlPrefix, {
+      '': addTrailingSlash(options.basePath)
+    });
   }
 
   // static files will be pre-cached
@@ -153,8 +137,9 @@ export async function generateServiceWorker(options: AddServiceWorkerOptions):
   const workboxConfig = await generateServiceWorkerConfig(options);
   return await <Promise<Buffer>>(new Promise((resolve) => {
     logger.debug(`writing service worker...`, workboxConfig);
-    generateSWString(workboxConfig).then(({ swString }) => {
+    generateSWString(workboxConfig).then(({ swString, warnings }) => {
       resolve(new Buffer(swString));
+      warnings.forEach(warning => console.warn(warning));
     });
   }));
 }
@@ -184,4 +169,8 @@ export async function addServiceWorker(options: AddServiceWorkerOptions):
 
 function removeLeadingSlash(s: string): string {
   return s.startsWith('/') ? s.substring(1) : s;
+}
+
+function addTrailingSlash(s: string): string {
+  return s.endsWith('/') ? s : s + '/';
 }

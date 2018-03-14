@@ -58,6 +58,12 @@ declare module "workbox-build" {
   export function generateSWString(
     options: WorkboxConfig
   ): Promise<{
-    swString: string
+    swString: string,
+    warnings: string[]
   }>;
+
+  export function getModuleUrl(
+    moduleName: string,
+    buildType?: string
+  ): string;
 }

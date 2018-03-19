@@ -89,9 +89,7 @@ export async function generateServiceWorkerConfig(
   const workboxConfig: WorkboxConfig =
     Object.assign({}, {
       globDirectory: buildRoot,
-      importScripts: [getModuleUrl('workbox-sw')],
       navigateFallback: path.relative(project.config.root, project.config.entrypoint),
-
     }, options.workboxConfig);
 
   const depsIndex = await project.analyzer.analyzeDependencies;
@@ -107,6 +105,10 @@ export async function generateServiceWorkerConfig(
     }
     return removeLeadingSlash(filePath);
   });
+
+  // Add the workbox cdn scripts
+  workboxConfig.importScripts = workboxConfig.importScripts || [];
+  workboxConfig.importScripts.push(getModuleUrl('workbox-sw'));
 
   if (workboxConfig.navigateFallbackWhitelist === undefined) {
     // Don't fall back to the entrypoint if the URL looks like a static file.

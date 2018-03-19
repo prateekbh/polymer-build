@@ -15,6 +15,8 @@
 import {dirname, relative} from 'path';
 import resolve = require('resolve');
 import {NodePath} from 'babel-traverse';
+import * as isWindows from 'is-windows';
+import * as whatwgUrl from 'whatwg-url';
 import {ImportDeclaration, ExportNamedDeclaration, ExportAllDeclaration} from 'babel-types';
 
 const exportExtensions = require('babel-plugin-syntax-export-extensions');
@@ -42,15 +44,35 @@ export const resolveBareSpecifiers =
 
           const specifier = node.source.value;
 
+          if (whatwgUrl.parseURL(specifier) !== null) {
+            return;
+          }
+
           if (isPathSpecifier(specifier)) {
             return;
           }
 
-          const resolvedSpecifier =
-              resolve.sync(specifier, {basedir: filePath});
+          const resolvedSpecifier = resolve.sync(specifier, {
+            basedir: filePath,
+            // Some packages use a non-standard alternative to the "main" field
+            // in their package.json to differentiate their ES module version.
+            packageFilter: (packageJson: {
+              main?: string,
+              module?: string,
+              'jsnext:main'?: string
+            }) => {
+              packageJson.main = packageJson.module ||
+                  packageJson['jsnext:main'] || packageJson.main;
+              return packageJson;
+            },
+          });
 
           let relativeSpecifierUrl =
               relative(dirname(filePath), resolvedSpecifier);
+
+          if (isWindows()) {
+            relativeSpecifierUrl = relativeSpecifierUrl.replace(/\\/g, '/');
+          }
 
           if (!isPathSpecifier(relativeSpecifierUrl)) {
             relativeSpecifierUrl = './' + relativeSpecifierUrl;

@@ -10,15 +10,32 @@
  */
 
 import {assert} from 'chai';
+import * as path from 'path';
+import stripIndent = require('strip-indent');
 import * as vfs from 'vinyl-fs-fake';
+import * as Vinyl from 'vinyl';
 
 import {getOptimizeStreams} from '../optimize-streams';
+import {HtmlSplitter} from '../html-splitter';
 import {pipeStreams} from '../streams';
 
 suite('optimize-streams', () => {
-  async function testStream(stream: NodeJS.ReadableStream): Promise<any> {
-    return new Promise((resolve, reject) => {
-      stream.on('data', resolve);
+  async function getOnlyFile(stream: NodeJS.ReadableStream): Promise<string> {
+    const fileMap = await getFileMap(stream);
+    if (fileMap.size !== 1) {
+      throw new Error(`Expected 1 file in the stream, got ${fileMap.size}.`);
+    }
+    return fileMap.values().next().value;
+  }
+
+  async function getFileMap(stream: NodeJS.ReadableStream):
+      Promise<Map<string, string>> {
+    const fileMap = new Map<string, string>();
+    return new Promise<Map<string, string>>((resolve, reject) => {
+      stream.on(
+          'data',
+          (file: Vinyl) => fileMap.set(file.path, file.contents.toString()));
+      stream.on('end', () => resolve(fileMap));
       stream.on('error', reject);
     });
   }
@@ -33,8 +50,7 @@ suite('optimize-streams', () => {
     ]);
     const op =
         pipeStreams([sourceStream, getOptimizeStreams({js: {compile: true}})]);
-    const f = await testStream(op);
-    assert.equal(f.contents.toString(), expected);
+    assert.equal(await getOnlyFile(op), expected);
   });
 
   test('does not compile webcomponents.js files (windows)', async () => {
@@ -48,8 +64,7 @@ suite('optimize-streams', () => {
     ]);
     const op =
         pipeStreams([sourceStream, getOptimizeStreams({js: {compile: true}})]);
-    const f = await testStream(op);
-    assert.equal(f.contents.toString(), es6Contents);
+    assert.equal(await getOnlyFile(op), es6Contents);
   });
 
   test('does not compile webcomponents.js files (unix)', async () => {
@@ -63,10 +78,70 @@ suite('optimize-streams', () => {
     ]);
     const op =
         pipeStreams([sourceStream, getOptimizeStreams({js: {compile: true}})]);
-    const f = await testStream(op);
-    assert.equal(f.contents.toString(), es6Contents);
+    assert.equal(await getOnlyFile(op), es6Contents);
   });
 
+  suite('rewrites bare module specifiers to paths', () => {
+    const fixtureRoot =
+        path.join(__dirname, '..', '..', 'test-fixtures', 'npm-modules');
+
+    test('in js files', async () => {
+      const filePath = path.join(fixtureRoot, 'foo.js');
+      const contents = stripIndent(`
+      import { dep1 } from 'dep1';
+      import { dep2 } from 'dep2';
+      import { dep2A } from 'dep2/a';
+      `);
+      const expected = stripIndent(`
+      import { dep1 } from './node_modules/dep1/index.js';
+      import { dep2 } from './node_modules/dep2/dep2.js';
+      import { dep2A } from './node_modules/dep2/a.js';
+      `);
+
+      const result = await getOnlyFile(pipeStreams([
+        vfs.src([{path: filePath, contents}]),
+        getOptimizeStreams({js: {moduleResolution: 'node'}}),
+      ]));
+      assert.deepEqual(result.trim(), expected.trim());
+    });
+
+    test('in html inline scripts', async () => {
+      const filePath = path.join(fixtureRoot, 'foo.html');
+      const contents = stripIndent(`
+      <html>
+        <head>
+          <script type="module">
+            import { dep1 } from 'dep1';
+            import { dep2 } from 'dep2';
+            import { dep2A } from 'dep2/a';
+          </script>
+        </head>
+        <body></body>
+      </html>
+      `);
+      // Note we do some quite ugly re-formatting of HTML!
+      const expected = stripIndent(`
+      <html><head>
+          <script type="module">
+      import { dep1 } from './node_modules/dep1/index.js';
+      import { dep2 } from './node_modules/dep2/dep2.js';
+      import { dep2A } from './node_modules/dep2/a.js';</script>
+        </head>
+        <body>
+
+      </body></html>
+      `);
+
+      const htmlSplitter = new HtmlSplitter();
+      const result = await getOnlyFile(pipeStreams([
+        vfs.src([{path: filePath, contents}]),
+        htmlSplitter.split(),
+        getOptimizeStreams({js: {moduleResolution: 'node'}}),
+        htmlSplitter.rejoin()
+      ]));
+      assert.deepEqual(result.trim(), expected.trim());
+    });
+  });
 
   test('minify js', async () => {
     const sourceStream = vfs.src([
@@ -77,8 +152,8 @@ suite('optimize-streams', () => {
     ]);
     const op =
         pipeStreams([sourceStream, getOptimizeStreams({js: {minify: true}})]);
-    const f = await testStream(op);
-    assert.equal(f.contents.toString(), 'var foo=3;');
+
+    assert.equal(await getOnlyFile(op), 'var foo=3;');
   });
 
   test('minify js (es6)', async () => {
@@ -90,8 +165,49 @@ suite('optimize-streams', () => {
     ]);
     const op =
         pipeStreams([sourceStream, getOptimizeStreams({js: {minify: true}})]);
-    const f = await testStream(op);
-    assert.equal(f.contents.toString(), '[1,2,3].map((a)=>a+1);');
+    assert.equal(await getOnlyFile(op), '[1,2,3].map((a)=>a+1);');
+  });
+
+  test('js exclude permutations', async () => {
+    const files = [
+      {
+        path: 'minify.js',
+        contents: 'const foo = 3;',
+        expected: 'const foo=3;',
+      },
+      {
+        path: 'compile.js',
+        contents: 'const foo = 3;',
+        expected: 'var foo = 3;',
+      },
+      {
+        path: 'minify-compile.js',
+        contents: 'const foo = 3;',
+        expected: 'var foo=3;',
+      },
+      {
+        path: 'neither.js',
+        // Even with no transform plugins, Babel will make minor code formatting
+        // changes, such as trimming newlines. This newline remaining shows that
+        // Babel did not run at all.
+        contents: 'const foo = 3;\n',
+        expected: 'const foo = 3;\n',
+      },
+    ];
+    const opts = {
+      js: {
+        compile: {exclude: ['minify.js', 'neither.js']},
+        minify: {exclude: ['compile.js', 'neither.js']},
+      },
+    };
+
+    const expected = new Map<string, string>(
+        files.map((file): [string, string] => [file.path, file.expected]));
+    const result = await getFileMap(pipeStreams([
+      vfs.src(files),
+      getOptimizeStreams(opts),
+    ]));
+    assert.deepEqual([...result.entries()], [...expected.entries()]);
   });
 
   test('minify html', async () => {
@@ -121,8 +237,7 @@ suite('optimize-streams', () => {
         {cwdbase: true});
     const op =
         pipeStreams([sourceStream, getOptimizeStreams({html: {minify: true}})]);
-    const f = await testStream(op);
-    assert.equal(f.contents.toString(), expected);
+    assert.equal(await getOnlyFile(op), expected);
   });
 
   test('minify css', async () => {
@@ -134,8 +249,7 @@ suite('optimize-streams', () => {
     ]);
     const op =
         pipeStreams([sourceStream, getOptimizeStreams({css: {minify: true}})]);
-    const f = await testStream(op);
-    assert.equal(f.contents.toString(), 'selector{property:value;}');
+    assert.equal(await getOnlyFile(op), 'selector{property:value;}');
   });
 
   test('minify css (inlined)', async () => {
@@ -162,7 +276,7 @@ suite('optimize-streams', () => {
         {cwdbase: true});
     const op =
         pipeStreams([sourceStream, getOptimizeStreams({css: {minify: true}})]);
-    const f = await testStream(op);
-    assert.include(f.contents.toString(), expected);
+
+    assert.include(await getOnlyFile(op), expected);
   });
 });

@@ -12,26 +12,17 @@
  * http://polymer.github.io/PATENTS.txt
  */
 
-import {transform as babelTransform} from 'babel-core';
 import * as cssSlam from 'css-slam';
 import * as gulpif from 'gulp-if';
 import {minify as htmlMinify, Options as HTMLMinifierOptions} from 'html-minifier';
 import * as logging from 'plylog';
+import {ModuleResolutionStrategy} from 'polymer-project-config';
 import {Transform} from 'stream';
 import * as vinyl from 'vinyl';
+
 import matcher = require('matcher');
 
-const babelPresetES2015 = require('babel-preset-es2015');
-const minifyPreset = require('babel-preset-minify');
-const babelPresetES2015NoModules =
-    babelPresetES2015.buildPreset({}, {modules: false});
-const externalHelpersPlugin = require('babel-plugin-external-helpers');
-const babelObjectRestSpreadPlugin =
-    require('babel-plugin-transform-object-rest-spread');
-const babelPluginSyntaxDynamicImport =
-    require('babel-plugin-syntax-dynamic-import');
-const babelPluginSyntaxObjectRestSpread =
-    require('babel-plugin-syntax-object-rest-spread');
+import {jsTransform} from './js-transform';
 
 // TODO(fks) 09-22-2016: Latest npm type declaration resolves to a non-module
 // entity. Upgrade to proper JS import once compatible .d.ts file is released,
@@ -46,26 +37,18 @@ export type CSSOptimizeOptions = {
 };
 export interface OptimizeOptions {
   html?: {
-    minify?:
-        boolean|{
-          exclude?: string[]
-        }
+    minify?: boolean|{exclude?: string[]},
   };
   css?: {
-    minify?:
-        boolean|{
-          exclude?: string[]
-        }
+    minify?: boolean|{exclude?: string[]},
   };
   js?: {
     minify?: boolean|{exclude?: string[]},
-    compile?:
-        boolean|{
-          exclude?: string[]
-        }
+    compile?: boolean|{exclude?: string[]},
+    moduleResolution?: ModuleResolutionStrategy,
+    transformEsModulesToAmd?: boolean,
   };
 }
-;
 
 /**
  * GenericOptimizeTransform is a generic optimization stream. It can be extended
@@ -75,10 +58,12 @@ export interface OptimizeOptions {
  * through unaffected.
  */
 export class GenericOptimizeTransform extends Transform {
-  optimizer: (content: string) => string;
+  optimizer: (content: string, file: File) => string;
   optimizerName: string;
 
-  constructor(optimizerName: string, optimizer: (content: string) => string) {
+  constructor(
+      optimizerName: string,
+      optimizer: (content: string, file: File) => string) {
     super({objectMode: true});
     this.optimizer = optimizer;
     this.optimizerName = optimizerName;
@@ -98,7 +83,7 @@ export class GenericOptimizeTransform extends Transform {
     if (file.contents) {
       try {
         let contents = file.contents.toString();
-        contents = this.optimizer(contents);
+        contents = this.optimizer(contents, file);
         file.contents = new Buffer(contents);
       } catch (error) {
         logger.warn(
@@ -111,37 +96,24 @@ export class GenericOptimizeTransform extends Transform {
 }
 
 /**
- * Transpile JavaScript to ES5 using Babel.
+ * Transform JavaScript using Babel.
  */
-export class JSCompileTransform extends GenericOptimizeTransform {
-  constructor() {
-    const transformer = (content: string) =>
-        babelTransform(content, {
-          presets: [babelPresetES2015NoModules],
-          plugins: [
-            externalHelpersPlugin,
-            babelObjectRestSpreadPlugin,
-            babelPluginSyntaxDynamicImport,
-          ]
-        }).code!;
-    super('babel-compile', transformer);
-  }
-}
+export class JsTransform extends GenericOptimizeTransform {
+  constructor(options: OptimizeOptions['js']) {
+    const shouldCompileFile =
+        options.compile ? notExcluded(options.compile) : () => false;
+    const shouldMinifyFile =
+        options.minify ? notExcluded(options.minify) : () => false;
 
-/**
- * Minify JavaScript using Babel.
- */
-export class JSMinifyTransform extends GenericOptimizeTransform {
-  constructor() {
-    const transformer = (content: string) =>
-        babelTransform(content, {
-          presets: [minifyPreset(null, {simplifyComparisons: false})],
-          plugins: [
-            babelPluginSyntaxObjectRestSpread,
-            babelPluginSyntaxDynamicImport,
-          ]
-        }).code!;
-    super('babel-minify', transformer);
+    const transformer = (content: string, file: File) => jsTransform(content, {
+      compileToEs5: shouldCompileFile(file),
+      minify: shouldMinifyFile(file),
+      moduleResolution: options.moduleResolution,
+      filePath: file.path,
+      transformEsModulesToAmd: options.transformEsModulesToAmd,
+    });
+
+    super('babel-compile', transformer);
   }
 }
 
@@ -197,11 +169,11 @@ export function getOptimizeStreams(options?: OptimizeOptions):
   options = options || {};
   const streams = [];
 
-  // compile ES6 JavaScript using babel
-  if (options.js && options.js.compile) {
-    streams.push(gulpif(
-        matchesExtAndNotExcluded('.js', options.js.compile),
-        new JSCompileTransform()));
+  // compile and/or minify ES6 JavaScript using babel
+  if (options.js &&
+      (options.js.compile || options.js.minify ||
+       options.js.moduleResolution === 'node')) {
+    streams.push(gulpif(matchesExt('.js'), new JsTransform(options.js)));
   }
 
   // minify code (minify should always be the last transform)
@@ -221,21 +193,22 @@ export function getOptimizeStreams(options?: OptimizeOptions):
         matchesExtAndNotExcluded('.html', options.css.minify),
         new InlineCSSOptimizeTransform({stripWhitespace: true})));
   }
-  if (options.js && options.js.minify) {
-    streams.push(gulpif(
-        matchesExtAndNotExcluded('.js', options.js.minify),
-        new JSMinifyTransform()));
-  }
 
   return streams;
 };
 
+function matchesExt(extension: string) {
+  return (fs: vinyl) => !!fs.path && fs.relative.endsWith(extension);
+}
+
+function notExcluded(option: boolean|{exclude?: string[]}) {
+  const exclude = typeof option === 'object' && option.exclude || [];
+  return (fs: vinyl) => !exclude.some(
+             (pattern: string) => matcher.isMatch(fs.relative, pattern));
+}
 function matchesExtAndNotExcluded(
     extension: string, option: boolean|{exclude?: string[]}) {
-  const exclude = typeof option === 'object' && option.exclude || [];
-  return (fs: vinyl) => {
-    return !!fs.path && fs.relative.endsWith(extension) &&
-        !exclude.some(
-            (pattern: string) => matcher.isMatch(fs.relative, pattern));
-  };
+  const a = matchesExt(extension);
+  const b = notExcluded(option);
+  return (fs: vinyl) => a(fs) && b(fs);
 }

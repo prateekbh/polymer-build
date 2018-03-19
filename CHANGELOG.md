@@ -5,8 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-<!-- ## Unreleased -->
+## Unreleased
 <!-- Add new, unreleased changes here. -->
+* Fix dependency specification for `babel-core`
+* Add `jsTransform` function, factored out of `optimize-streams` module (so that it can be shared with Polyserve).
+* Renamed `jsTransform` option from `compile` to `compileToEs5` to clarify its behavior.
+* Added `transformEsModulesToAmd` option to `jsTransform` and JS stream transformer.
+* Add exponentiation, async/await, and async generator syntax/transform support to `jsTransform`.
+
+## [2.3.3] - 2018-03-14
+* Don't run Babel at all if there are no meaningful changes to make.
+
+## [2.3.2] - 2018-03-13
+* Fix bug where JS compilation/minification would ignore the "excludes" field.
+
+## [2.3.1] - 2018-03-12
+* Restore ES5 template literal uniquifying feature from https://github.com/Polymer/polymer-cli/pull/962 that was missed in earlier code migration.
+* Allow "none" moduleResolution option in JS compile transform.
+
+## [2.3.0] - 2018-03-12
+* JS compile and other "optimize streams" build transformers have been moved from polyer-cli into this package.
+* JS compile build transformer wil now rewrite bare module specifiers to paths.
+* Module bare specifier rewriting Babel plugin has been moved from polyserve into this package.
+* Module bare specifier rewriting Babel plugin now works on Windows, does not rewrite fully qualified URLs, and will follow the "module" or "jsnext:main" fields when a package.json uses them instead of "main".
 
 ## [2.2.0] - 2018-02-23
 * Fixed issue where the build silently fails when several source dependencies are missing

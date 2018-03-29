@@ -26,6 +26,7 @@ const tslint = require('gulp-tslint');
 const typescript = require('gulp-typescript');
 const uglify = require('uglify-js');
 const babelCore = require('babel-core');
+const sourcemaps = require('gulp-sourcemaps');
 
 const tsProject = typescript.createProject(
     'tsconfig.json', {typescript: require('typescript')});
@@ -37,14 +38,19 @@ gulp.task('clean', (done) => {
 });
 
 gulp.task('build', (done) => {
-  runSeq('clean', ['compile', 'gen-babel-helpers'], done);
+  runSeq('clean', ['compile', 'gen-babel-helpers', 'minify-requirejs'], done);
 });
 
 gulp.task('compile', () => {
-  let tsReporter = typescript.reporter.defaultReporter();
+  const srcs =
+    gulp.src('src/**/*.ts');
+  const tsResult =
+    srcs.pipe(sourcemaps.init())
+      .pipe(typescript(tsProject, [], typescript.reporter.fullReporter()));
+
   return mergeStream(
-             tsProject.src().pipe(tsProject(tsReporter)),
-             gulp.src(['src/**/*', '!src/**/*.ts']))
+             tsResult.js.pipe(sourcemaps.write('../lib')),
+             tsResult.dts)
       .pipe(gulp.dest('lib'));
 });
 
@@ -72,7 +78,7 @@ gulp.task('depcheck', function() {
       // Also it can't yet parse files that use async iteration.
       // TODO(rictic): remove these
       'mz', 'multipipe', 'polymer-bundler', 'parse5', 'dom5',
-      'babel-traverse', 'stream',
+      'babel-traverse', 'stream', 'html-minifier',
   ]}).then((result) => {
     let invalidFiles = Object.keys(result.invalidFiles) || [];
     let invalidJsFiles = invalidFiles.filter((f) => f.endsWith('.js'));
@@ -138,4 +144,14 @@ gulp.task('gen-babel-helpers', () => {
   fs.mkdirpSync('./lib/');
   fs.writeFileSync(
       './lib/babel-helpers.min.js', minified, {encoding: 'utf-8'});
+});
+
+gulp.task('minify-requirejs', () => {
+  const requireJsPath =
+      path.join(path.dirname(require.resolve('requirejs')), '..', 'require.js');
+  const requireJsCode = fs.readFileSync(requireJsPath, 'utf-8');
+  const {code: minified} = uglify.minify(requireJsCode, {fromString: true});
+  fs.mkdirpSync('./lib/');
+  fs.writeFileSync(
+      './lib/requirejs.min.js', minified, {encoding: 'utf-8'});
 });

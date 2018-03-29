@@ -20,16 +20,16 @@ import * as logging from 'plylog';
 import { generateSWString, getModuleUrl, WorkboxConfig } from 'workbox-build';
 import { DepsIndex } from './analyzer';
 import { PolymerProject } from './polymer-project';
-
+import { LocalFsPath, posixifyPath, PosixPath } from './path-transformers';
 const logger = logging.getLogger('polymer-build.service-worker');
 
 export interface AddServiceWorkerOptions {
   project: PolymerProject;
-  buildRoot: string;
+  buildRoot: LocalFsPath;
   bundled?: boolean;
-  path?: string;
+  path?: LocalFsPath;
   workboxConfig?: WorkboxConfig | null;
-  basePath?: string;
+  basePath?: LocalFsPath;
 }
 
 /**
@@ -120,7 +120,7 @@ export async function generateServiceWorkerConfig(
 
   if (options.basePath) {
     workboxConfig.modifyUrlPrefix = Object.assign({}, workboxConfig.modifyUrlPrefix, {
-      '': addTrailingSlash(options.basePath)
+      '': addTrailingSlash(posixifyPath(options.basePath))
     });
   }
 

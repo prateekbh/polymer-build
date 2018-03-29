@@ -85,12 +85,36 @@ export interface JsTransformOptions {
   // The path of the file being transformed, used for module resolution.
   filePath?: string;
 
+  // The package name of the file being transformed, required when
+  // `isComponentRequest` is true.
+  packageName?: string;
+
   // For Polyserve or other servers with similar component directory mounting
   // behavior. Whether this is a request for a package in node_modules/.
   isComponentRequest?: boolean;
 
+  // The component directory to use when rewriting bare specifiers to relative
+  // paths. A resolved path that begins with the component directory will be
+  // rewritten to be relative to the root.
+  componentDir?: string;
+
+  // The root directory of the package containing the component directory.
+  rootDir?: string;
+
   // Whether to replace ES modules with AMD modules.
   transformEsModulesToAmd?: boolean;
+
+  // If transformEsModulesToAmd is true, setting this option will update the
+  // generated AMD module to be 1) defined with an auto-generated name (instead
+  // of with no name), and 2) if > 0, to depend on the previously auto-generated
+  // module. This can be used to generate a dependency chain between module
+  // scripts.
+  moduleScriptIdx?: number;
+
+  // If true, parsing of invalid JavaScript will not throw an exception.
+  // Instead, a console error will be logged, and the original JavaScript will
+  // be returned with no changes. Use with caution!
+  softSyntaxError?: boolean;
 }
 
 /**
@@ -124,8 +148,12 @@ export function jsTransform(js: string, options: JsTransformOptions): string {
           'Cannot perform node module resolution without filePath.');
     }
     doBabel = true;
-    plugins.push(
-        resolveBareSpecifiers(options.filePath, options.isComponentRequest));
+    plugins.push(resolveBareSpecifiers(
+        options.filePath,
+        !!options.isComponentRequest,
+        options.packageName,
+        options.componentDir,
+        options.rootDir));
   }
   if (options.transformEsModulesToAmd) {
     doBabel = true;
@@ -133,10 +161,44 @@ export function jsTransform(js: string, options: JsTransformOptions): string {
   }
 
   if (doBabel) {
-    js = babelCore.transform(js, {presets, plugins}).code!;
+    try {
+      js = babelCore.transform(js, {presets, plugins}).code!;
+    } catch (e) {
+      if (options.softSyntaxError && e.constructor.name === 'SyntaxError') {
+        console.error(
+            'ERROR [polymer-build]: failed to parse JavaScript' +
+                (options.filePath ? ` (${options.filePath}):` : ':'),
+            e);
+        return js;
+      } else {
+        throw e;
+      }
+    }
   }
+
+  if (options.transformEsModulesToAmd &&
+      options.moduleScriptIdx !== undefined) {
+    const generatedModule = generateModuleName(options.moduleScriptIdx);
+    const previousGeneratedModule = options.moduleScriptIdx === 0 ?
+        undefined :
+        generateModuleName(options.moduleScriptIdx - 1);
+    const depStr = previousGeneratedModule === undefined ?
+        '' :
+        `'${previousGeneratedModule}', `;
+    // The AMD Babel plugin will produce a `define` call with no name argument,
+    // since it assumes its name corresponds to its file name. This is an inline
+    // script, though, and we need a handle to it for chaining, so insert a name
+    // argument.
+    js = js.replace('define([', `define('${generatedModule}', [${depStr}`);
+  }
+
   js = replaceTemplateObjectNames(js);
+
   return js;
+}
+
+export function generateModuleName(idx: number): string {
+  return `polymer-build-generated-module-${idx}`;
 }
 
 /**

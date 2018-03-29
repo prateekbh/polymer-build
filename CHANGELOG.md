@@ -5,8 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## Unreleased
+<!-- ## Unreleased -->
 <!-- Add new, unreleased changes here. -->
+
+## [3.0.0-pre.5] - 2018-03-28
+* AMD loader will now only be injected into an HTML document if it contains at least one `type=module` script.
+* Added `softSyntaxError` option to `jsTransform`. If set, Babel parse errors will no longer throw. Instead, a console error will be logged, and the original JS returned.
+* Expose `htmlTransform` from main package index.
+
+## [3.0.0-pre.4] - 2018-03-28
+* ES to AMD module transformation is now supported by `getOptimizeStreams` and `htmlTransform`. Additionally:
+  * Will now inject an inline minified RequireJS AMD loader, and the Babel helpers.
+  * Phantom `<html>`, `<head>`, and `<body>` tags injected by parse5 are now removed.
+
+## [3.0.0-pre.3] - 2018-03-28
+* Upgraded to `polymer-bundler@4.0.0-pre.3` which brings ES6 module bundling to the build pipeline!  Upgraded to `polymer-analyzer@3.0.0-pre.18`.
+
+## [3.0.0-pre.2] - 2018-03-26
+* Add `htmlTransform` function, factored out of the Polyserve `compile-middleware` module.
+* Add ordered execution to the ES to AMD module transformation in `htmlTransform`.
+* Node module specifier rewriter will now resolve paths according to the node module resolution algorithm, not just bare specifiers (e.g. "./foo" resolves to "./foo.js").
+
+## [3.0.0-pre.1] - 2018-03-21
+* Upgraded to `polymer-analyzer@3.0.0-pre.17` and `polymer-bundler@4.0.0-pre.2`.
+* Converted from `PackageUrlResolver` to `FsUrlResolver` as more appropriate to application build context.
+* Ignore `not-loadable` warnings, as polymer-build should not load remote
+  resources.
+
+## [2.5.0] - 2018-03-21
+* Add `packageName` option to `jsTransform()` function. Option is required when
+  `isComponentRequest` option is true.
+
+## [2.4.1] - 2018-03-20
+* Fix import specifier rewriting when importing a dependency from a top-level module.
+
+## [2.4.0] - 2018-03-19
 * Fix dependency specification for `babel-core`
 * Add `jsTransform` function, factored out of `optimize-streams` module (so that it can be shared with Polyserve).
 * Renamed `jsTransform` option from `compile` to `compileToEs5` to clarify its behavior.

@@ -24,6 +24,7 @@ import {Writable} from 'stream';
 import {getFlowingState} from './util';
 import {BuildAnalyzer} from '../analyzer';
 import {waitFor, waitForAll} from '../streams';
+import {PackageRelativeUrl} from 'polymer-analyzer';
 
 /**
  * Streams will remain paused unless something is listening for it's data.
@@ -35,14 +36,12 @@ class NoopStream extends Writable {
     super({objectMode: true});
   }
   _write(_chunk: any, _encoding?: string, callback?: Function): void {
-    callback();
+    callback!();
   }
 }
 
 suite('Analyzer', () => {
-
   suite('DepsIndex', () => {
-
     test('fragment to deps list has only uniques', () => {
       const config = new ProjectConfig({
         root: `test-fixtures/analyzer-data`,
@@ -54,7 +53,7 @@ suite('Analyzer', () => {
         sources: ['a.html', 'b.html', 'entrypoint.html'],
       });
 
-      const analyzer = new BuildAnalyzer(config);
+      const analyzer = new BuildAnalyzer(config, null);
       analyzer.sources().pipe(new NoopStream());
       analyzer.dependencies().pipe(new NoopStream());
 
@@ -66,7 +65,9 @@ suite('Analyzer', () => {
             const ftd = depsIndex.fragmentToDeps;
             for (const frag of ftd.keys()) {
               assert.deepEqual(
-                  ftd.get(frag), ['shared-1.html', 'shared-2.html']);
+                  ftd.get(frag),
+                  ['shared-1.html', 'shared-2.html'].map(
+                      (u) => u as PackageRelativeUrl));
             }
           });
     });
@@ -82,7 +83,7 @@ suite('Analyzer', () => {
         sources: sourceFiles,
       });
 
-      const analyzer = new BuildAnalyzer(config);
+      const analyzer = new BuildAnalyzer(config, null);
       analyzer.sources().pipe(new NoopStream());
       analyzer.dependencies().pipe(new NoopStream());
 
@@ -91,78 +92,17 @@ suite('Analyzer', () => {
             return analyzer.analyzeDependencies;
           })
           .then((depsIndex) => {
-            assert.isTrue(depsIndex.depsToFragments.has('shared-2.html'));
-            assert.isFalse(depsIndex.depsToFragments.has('/shell.html'));
-            assert.isFalse(depsIndex.depsToFragments.has('/shared-2.html'));
+            assert.isTrue(depsIndex.depsToFragments.has(
+                'shared-2.html' as PackageRelativeUrl));
+            assert.isFalse(depsIndex.depsToFragments.has(
+                'shell.html' as PackageRelativeUrl));
+            assert.isFalse(depsIndex.depsToFragments.has(
+                'shared-banana.html' as PackageRelativeUrl));
           });
     });
-
-  });
-
-  suite('ProjectConfig componentDir', () => {
-
-    test(
-        'setting `componentDir` searches for dependencies in the given ' +
-            'directory',
-        () => {
-          const foundDependencies = new Set();
-          const root = `test-fixtures/analyzer-componentDir`;
-          const sourceFiles =
-              ['my-component.js'].map((p) => path.resolve(root, p));
-          const config = new ProjectConfig({
-            root: root,
-            entrypoint: 'my-component.js',
-            sources: sourceFiles,
-
-            componentDir: 'path/to/some/components/',
-          });
-
-          const analyzer = new BuildAnalyzer(config);
-          analyzer.sources().pipe(new NoopStream());
-          analyzer.dependencies().on('data', (file: File) => {
-            foundDependencies.add(file.path);
-          });
-
-          return waitForAll([analyzer.sources(), analyzer.dependencies()])
-              .then(() => {
-                assert.isTrue(foundDependencies.has(path.resolve(
-                    root,
-                    'path/to/some/components/a_component/a_component.js')));
-              });
-        });
-
-    test(
-        'setting `npm: true` searches for dependencies in "node_modules/"',
-        () => {
-          const foundDependencies = new Set();
-          const root = `test-fixtures/analyzer-componentDir-npm`;
-          const sourceFiles =
-              ['my-component.js'].map((p) => path.resolve(root, p));
-          const config = new ProjectConfig({
-            root: root,
-            entrypoint: 'my-component.js',
-            sources: sourceFiles,
-
-            npm: true,
-          });
-
-          const analyzer = new BuildAnalyzer(config);
-          analyzer.sources().pipe(new NoopStream());
-          analyzer.dependencies().on('data', (file: File) => {
-            foundDependencies.add(file.path);
-          });
-
-          return waitForAll([analyzer.sources(), analyzer.dependencies()])
-              .then(() => {
-                assert.isTrue(foundDependencies.has(path.resolve(
-                    root, 'node_modules/a_component/a_component.js')));
-              });
-        });
-
   });
 
   suite('.dependencies', () => {
-
     test('outputs all dependencies needed by source', () => {
       const foundDependencies = new Set();
       const root = `test-fixtures/analyzer-data`;
@@ -175,7 +115,7 @@ suite('Analyzer', () => {
         sources: sourceFiles,
       });
 
-      const analyzer = new BuildAnalyzer(config);
+      const analyzer = new BuildAnalyzer(config, null);
       analyzer.sources().pipe(new NoopStream());
       analyzer.dependencies().on('data', (file: File) => {
         foundDependencies.add(file.path);
@@ -210,7 +150,7 @@ suite('Analyzer', () => {
             ],
             sources: sourceFiles,
           });
-          const analyzer = new BuildAnalyzer(config);
+          const analyzer = new BuildAnalyzer(config, null);
           analyzer.sources().pipe(new NoopStream());
           analyzer.dependencies().on('data', (file: File) => {
             foundDependencies.add(file.path);
@@ -228,7 +168,6 @@ suite('Analyzer', () => {
                     foundDependencies.has(path.resolve(root, 'shared-2.html')));
               });
         });
-
   });
 
   test(
@@ -240,7 +179,7 @@ suite('Analyzer', () => {
           entrypoint: 'index.html',
           sources: ['src/**/*'],
         });
-        const analyzer = new BuildAnalyzer(config);
+        const analyzer = new BuildAnalyzer(config, null);
 
         let errorCounter = 0;
         const errorListener = (err: Error) => {
@@ -250,7 +189,6 @@ suite('Analyzer', () => {
             done();
           }
         };
-
         analyzer.sources().pipe(new NoopStream());
         analyzer.sources().on('error', errorListener);
         analyzer.dependencies().pipe(new NoopStream());
@@ -266,7 +204,7 @@ suite('Analyzer', () => {
           entrypoint: 'index.html',
           sources: ['src/**/*'],
         });
-        const analyzer = new BuildAnalyzer(config);
+        const analyzer = new BuildAnalyzer(config, null);
 
         analyzer.dependencies().pipe(new NoopStream());
         analyzer.dependencies().on('error', (err: Error) => {
@@ -286,7 +224,7 @@ suite('Analyzer', () => {
           root: root,
           sources: [sourceFiles],
         });
-        const analyzer = new BuildAnalyzer(config);
+        const analyzer = new BuildAnalyzer(config, null);
 
         let errorCounter = 0;
         const errorListener = (err: Error) => {
@@ -317,7 +255,7 @@ suite('Analyzer', () => {
         const prematurePrintWarningsCheck = () => prematurePrintWarnings =
             prematurePrintWarnings ||
             analyzer.allFragmentsToAnalyze.size > 0 && printWarningsSpy.called;
-        const analyzer = new BuildAnalyzer(config);
+        const analyzer = new BuildAnalyzer(config, null);
         const printWarningsSpy = sinon.spy(analyzer, 'printWarnings');
 
         analyzer.sources().on('data', prematurePrintWarningsCheck);
@@ -347,13 +285,12 @@ suite('Analyzer', () => {
       }
     });
 
-    const analyzer = new BuildAnalyzer(config);
+    const analyzer = new BuildAnalyzer(config, null);
     analyzer.sources().pipe(new NoopStream());
 
     return waitFor(analyzer.sources()).then(() => {
       assert.isTrue(analyzer.warnings.size === 0);
     });
-
   });
 
   test('calling sources() starts analysis', async () => {
@@ -367,7 +304,7 @@ suite('Analyzer', () => {
       sources: ['a.html', 'b.html', 'entrypoint.html'],
     });
 
-    const analyzer = new BuildAnalyzer(config);
+    const analyzer = new BuildAnalyzer(config, null);
     assert.isFalse(analyzer.started);
     analyzer.sources().pipe(new NoopStream());
     assert.isTrue(analyzer.started);
@@ -385,7 +322,7 @@ suite('Analyzer', () => {
       sources: ['a.html', 'b.html', 'entrypoint.html'],
     });
 
-    const analyzer = new BuildAnalyzer(config);
+    const analyzer = new BuildAnalyzer(config, null);
     assert.isFalse(analyzer.started);
     analyzer.dependencies().pipe(new NoopStream());
     assert.isTrue(analyzer.started);
@@ -401,7 +338,7 @@ suite('Analyzer', () => {
       ],
       sources: ['a.html', 'b.html', 'entrypoint.html'],
     });
-    const analyzer = new BuildAnalyzer(config);
+    const analyzer = new BuildAnalyzer(config, null);
 
     // Cast analyzer to <any> so that we can check private properties of it.
     // We need to access these private streams directly because the public

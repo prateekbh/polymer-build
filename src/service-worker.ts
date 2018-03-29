@@ -108,7 +108,7 @@ export async function generateServiceWorkerConfig(
 
   // Add the workbox cdn scripts
   workboxConfig.importScripts = workboxConfig.importScripts || [];
-  workboxConfig.importScripts.push(getModuleUrl('workbox-sw'));
+  workboxConfig.importScripts.unshift(getModuleUrl('workbox-sw'));
 
   if (workboxConfig.navigateFallbackWhitelist === undefined) {
     // Don't fall back to the entrypoint if the URL looks like a static file.
